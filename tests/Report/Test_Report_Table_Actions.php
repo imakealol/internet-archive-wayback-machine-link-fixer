@@ -94,6 +94,63 @@ class Test_Report_Table_Actions extends \WP_UnitTestCase {
 
 
 	/**
+	 * @testdox Batch snapshot notices are separated, use singular/plural counts, and no success notice shows when nothing was queued. (S090)
+	 *
+	 * @return void
+	 */
+	public function test_delayed_snapshot_notices_are_separated_and_pluralised(): void {
+		$table = new class($this->link_repository) extends Report_Table {
+			public function run_delay( array $links ): void {
+				Objects::invoke_method( $this, 'delay_new_snapshot_processing', array( $links ) );
+			}
+
+			public function get_notices(): ?array {
+				return $this->notices;
+			}
+		};
+
+		// One missing link and one own-site link — nothing queueable.
+		$own = $this->link_repository->upsert( new Link( get_site_url() . '/own-page' ) );
+
+		$table->run_delay( array( 999999999, $own->get_id() ) );
+
+		$notices = $table->get_notices();
+
+		// Only the error notice — no phantom success notice.
+		$this->assertCount( 1, $notices );
+		$this->assertSame( 'error', $notices[0]['type'] );
+
+		// Singular count via _n().
+		$this->assertStringContainsString( '1 link could not be found.', $notices[0]['message'] );
+		$this->assertStringNotContainsString( '1 links could', $notices[0]['message'] );
+
+		// Segments are separated with <br /> — render_notices() already wraps the whole message in <p>, so no nested paragraphs.
+		$this->assertStringNotContainsString( '<p>', $notices[0]['message'] );
+		$this->assertStringContainsString( '<br />', $notices[0]['message'] );
+	}
+
+	/**
+	 * @testdox The post-action redirect URL is origin-relative — no home_url prefix, so a subdirectory install path is never duplicated. (S055)
+	 *
+	 * @return void
+	 */
+	public function test_redirect_action_url_is_origin_relative(): void {
+		$original_request_uri   = $_SERVER['REQUEST_URI'] ?? '';
+		$_SERVER['REQUEST_URI'] = '/blog/wp-admin/admin.php?page=iawmlf-report&action=some_action&_wpnonce=abc';
+
+		$table = $this->get_mocked_table();
+		$url   = $table->get_redirect_action_url( 'cache123' );
+
+		$_SERVER['REQUEST_URI'] = $original_request_uri;
+
+		$this->assertStringStartsWith( '/blog/wp-admin/admin.php', $url );
+		$this->assertStringNotContainsString( home_url(), $url );
+		$this->assertStringContainsString( 'iawmlf_notification=cache123', $url );
+		$this->assertStringNotContainsString( 'some_action', $url );
+		$this->assertStringNotContainsString( '_wpnonce', $url );
+	}
+
+	/**
 	 * @testdox When creating a new snapshot for less than 10 links, just process and start the process of creating a new snapshot.
 	 *
 	 * @return void

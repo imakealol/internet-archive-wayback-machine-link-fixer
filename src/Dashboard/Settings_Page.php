@@ -144,10 +144,12 @@ class Settings_Page {
 		wp_register_script(
 			self::PAGE_SLUG,
 			IAWMLF_URL . 'assets/js/build/admin_settings.js',
-			array( 'jquery', 'wp-escape-html' ),
+			array( 'jquery', 'wp-escape-html', 'wp-i18n' ),
 			IAWMLF_VERSION,
 			true
 		);
+
+		wp_set_script_translations( self::PAGE_SLUG, 'internet-archive-wayback-machine-link-fixer', IAWMLF_PATH . 'languages' );
 
 		wp_localize_script(
 			self::PAGE_SLUG,
@@ -190,7 +192,7 @@ class Settings_Page {
 		if ( Settings::is_wizard_completed() ) {
 			$wizard_link = \sprintf(
 				'<a href="%s" class="button button-primary">%s</a>',
-				esc_url( Setup_Wizard::get_wizard_url() . '&rerun-wizard=1' ),
+				esc_url( add_query_arg( 'rerun-wizard', '1', Setup_Wizard::get_wizard_url() ) ),
 				esc_html__( 'Rerun The Setup Wizard', 'internet-archive-wayback-machine-link-fixer' )
 			);
 		}
@@ -969,7 +971,7 @@ class Settings_Page {
 				<input
 					type="text"
 					id="iawmlf_excluded_links_new"
-					placeholder="<?php esc_html_e( 'Add a new exclusion (https://x.com*)', 'internet-archive-wayback-machine-link-fixer' ); ?>"
+					placeholder="<?php esc_attr_e( 'Add a new exclusion (https://x.com*)', 'internet-archive-wayback-machine-link-fixer' ); ?>"
 					data-group="link_fixer"
 				/>
 				<button id="iawmlf_excluded_links_new_action" data-group="link_fixer" type="button" class="button button-secondary add-exclusion"><?php esc_html_e( 'Add', 'internet-archive-wayback-machine-link-fixer' ); ?></button>

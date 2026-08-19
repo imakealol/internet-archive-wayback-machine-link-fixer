@@ -99,7 +99,7 @@ class Test_Functions extends \WP_UnitTestCase {
 			'error:max-daily-bandwidth'         => array( 'error:max-daily-bandwidth', 'An authenticated user can archive up to 5GB per day.' ),
 			'error:max-daily-bandwidth-from-ip' => array( 'error:max-daily-bandwidth-from-ip', 'An anonymous user can archive up to 2GB per day.' ),
 			'error:max-daily-bandwidth-host'    => array( 'error:max-daily-bandwidth-host', 'SPN2 can archive up to 100GB per day from a host.' ),
-			'error:other'                       => array( 'error:other', 'Uknown: error:other' ),
+			'error:other'                       => array( 'error:other', 'Unknown: error:other' ),
 			'info:not-valid'                    => array( 'info:not-valid', 'info:not-valid' ),
 		);
 }
@@ -154,6 +154,25 @@ public function test_can_normalize_url( string $url, string $expected ): void {
 	 */
 public function test_can_identify_archive_links( string $url, bool $expected ): void {
 	$this->assertSame( $expected, \iawmlf_is_archive_link( $url ) );
+}
+
+	/**
+	 * @testdox A lookalike domain that merely starts with the site URL is not a current-site link. (S067)
+	 *
+	 * @return void
+	 */
+public function test_is_current_site_link_rejects_lookalike_domains(): void {
+	$site = get_site_url();
+
+	// Genuine site links.
+	$this->assertTrue( \iawmlf_is_current_site_link( $site ) );
+	$this->assertTrue( \iawmlf_is_current_site_link( $site . '/' ) );
+	$this->assertTrue( \iawmlf_is_current_site_link( $site . '/some/page' ) );
+	$this->assertTrue( \iawmlf_is_current_site_link( $site . '?p=1' ) );
+
+	// Lookalikes that only share the prefix.
+	$this->assertFalse( \iawmlf_is_current_site_link( $site . '.attacker.net/x' ) );
+	$this->assertFalse( \iawmlf_is_current_site_link( $site . 'merce-site.com/x' ) );
 }
 
 	/**

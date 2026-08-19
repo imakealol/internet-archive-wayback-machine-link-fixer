@@ -126,6 +126,39 @@ class Test_Settings extends \WP_UnitTestCase {
 	}
 
 	/**
+	 * @testdox Stored exclusion patterns must be returned raw, not HTML-escaped, or they can never match a raw href. (S008)
+	 *
+	 * @return void
+	 */
+	public function test_get_link_exclusions_returns_raw_values(): void {
+		$patterns = array(
+			'*example.com/?a=1&b=2*',
+			"*o'brien.example*",
+		);
+		update_option( Settings::LINK_EXCLUSIONS, $patterns );
+
+		$this->assertSame( $patterns, Settings::get_link_exclusions() );
+	}
+
+	/**
+	 * @testdox Archive.org credentials must be returned raw, not HTML-escaped, as they are sent in an Authorization header. (S008)
+	 *
+	 * @return void
+	 */
+	public function test_archive_credentials_are_returned_raw(): void {
+		$secret = 'sec&ret"key';
+		$access = "acc&ess'key";
+		update_option( Settings::ARCHIVE_ORG_SECRET_KEY, $secret );
+		update_option( Settings::ARCHIVE_ORG_ACCESS_KEY, $access );
+
+		$this->assertSame( $secret, Settings::get_archive_secret_key() );
+		$this->assertSame( $access, Settings::get_archive_access_key() );
+
+		delete_option( Settings::ARCHIVE_ORG_SECRET_KEY );
+		delete_option( Settings::ARCHIVE_ORG_ACCESS_KEY );
+	}
+
+	/**
 	 * @testdox It should be possible to add links to the exclusion list via a filter, to ensure some can not be removed.
 	 *
 	 * @return void
@@ -534,6 +567,45 @@ class Test_Settings extends \WP_UnitTestCase {
 
 		// None is always present.
 		$this->assertContains( Settings::LINK_ICON_NONE, $ids );
+
+		// Clean up.
+		remove_all_filters( 'iawmlf_link_icons' );
+	}
+
+	/**
+	 * @testdox An icon css_rule has any </style> breakout neutralised while markup inside a data: URI survives. (S050)
+	 *
+	 * @return void
+	 */
+	public function test_icon_css_rule_neutralises_style_breakout(): void {
+		add_filter(
+			'iawmlf_link_icons',
+			function ( array $icons ) {
+				$icons[] = array(
+					'id'       => 'evil_icon',
+					'name'     => 'Evil Icon',
+					'css_rule' => 'a:after { content: "x"; }</style><script>alert(1)</script>',
+				);
+				$icons[] = array(
+					'id'       => 'svg_icon',
+					'name'     => 'SVG Icon',
+					'css_rule' => 'a:after { background-image: url("data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M0 0\'/></svg>"); }',
+				);
+				return $icons;
+			}
+		);
+
+		$rules = array_column( Settings::get_available_link_icons(), 'css_rule', 'id' );
+
+		// The style-closing sequence is gone, so nothing can escape the <style> block.
+		$this->assertDoesNotMatchRegularExpression( '#</\s*style#i', $rules['evil_icon'] );
+		$this->assertStringContainsString( 'a:after { content: "x"; }', $rules['evil_icon'] );
+
+		// Markup inside a data: URI survives.
+		$this->assertStringContainsString( '<svg', $rules['svg_icon'] );
+
+		update_option( Settings::LINK_ICON, 'evil_icon' );
+		$this->assertDoesNotMatchRegularExpression( '#</\s*style#i', Settings::get_link_icon_css() );
 
 		// Clean up.
 		remove_all_filters( 'iawmlf_link_icons' );

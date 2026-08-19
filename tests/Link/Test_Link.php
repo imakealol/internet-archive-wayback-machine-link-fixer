@@ -400,6 +400,53 @@ class Test_Link extends \WP_UnitTestCase {
 	}
 
 	/**
+	 * @testdox set_message() must sanitize, not escape — special characters stay raw, tags and surplus whitespace are stripped. (S008)
+	 *
+	 * @return void
+	 */
+	public function test_set_message_sanitizes_without_escaping(): void {
+		$link = new Link( 'https://example.com' );
+
+		// Special characters survive raw — no HTML entities.
+		$link->set_message( 'Redirected to "checkout" & cart page' );
+		$this->assertSame( 'Redirected to "checkout" & cart page', $link->get_message() );
+
+		// Tags and surplus whitespace are stripped.
+		$link->set_message( "  Broken <strong>link</strong>\tfound  " );
+		$this->assertSame( 'Broken link found', $link->get_message() );
+	}
+
+	/**
+	 * @testdox The manual-exclusion sentinel constants are frozen — their values are persisted in the message column of existing rows, so changing them breaks provenance detection. (S036)
+	 *
+	 * @return void
+	 */
+	public function test_manual_exclusion_constants_are_frozen(): void {
+		// Literals on purpose: a change to either constant MUST fail this test.
+		$this->assertSame( 'User Requested To Exclude (%1$s on %2$s)', Link::MANUAL_EXCLUSION_TEMPLATE );
+		$this->assertSame( '/^User Requested To Exclude \((.+) on (.+)\)$/', Link::MANUAL_EXCLUSION_PATTERN );
+
+		// The pattern must parse what the template writes, capturing login and date.
+		$written = sprintf( Link::MANUAL_EXCLUSION_TEMPLATE, 'admin', '28 May 2026' );
+		$this->assertSame( 1, preg_match( Link::MANUAL_EXCLUSION_PATTERN, $written, $matches ) );
+		$this->assertSame( 'admin', $matches[1] );
+		$this->assertSame( '28 May 2026', $matches[2] );
+	}
+
+	/**
+	 * @testdox A message written with MANUAL_EXCLUSION_TEMPLATE is recognised by is_manual_exclusion(). (S036)
+	 *
+	 * @return void
+	 */
+	public function test_template_message_is_recognised_as_manual_exclusion(): void {
+		$link = new Link( 'https://example.com' );
+		$link->set_excluded();
+		$link->set_message( sprintf( Link::MANUAL_EXCLUSION_TEMPLATE, 'admin', '28 May 2026' ) );
+
+		$this->assertTrue( $link->is_manual_exclusion() );
+	}
+
+	/**
 	 * @testdox is_manual_exclusion() is true only when the link is excluded AND the message starts with the user-exclusion sentinel.
 	 *
 	 * @return void

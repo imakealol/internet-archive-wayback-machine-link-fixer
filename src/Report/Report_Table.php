@@ -287,6 +287,21 @@ class Report_Table extends \WP_List_Table {
 		}
 		$cache_key = $cache->save();
 
+		$url = $this->get_redirect_action_url( $cache_key );
+
+		// Redirect to the page using JS as page already loaded headers.
+		printf( '<script>window.location = %s;</script>', wp_json_encode( $url ) );
+		exit;
+	}
+
+	/**
+	 * Build the post-action redirect URL, origin-relative (REQUEST_URI already holds any install subdirectory).
+	 *
+	 * @param string $cache_key The saved notification cache key.
+	 *
+	 * @return string
+	 */
+	public function get_redirect_action_url( string $cache_key ): string {
 		// Redirect to the same page with all actions removed.
 		$redirect = remove_query_arg( array( 'action', 'action2', 'iawmlf_link_action', 'iawmlf_links', '_wpnonce', '_wp_http_referer' ) );
 
@@ -301,12 +316,7 @@ class Report_Table extends \WP_List_Table {
 			$redirect = add_query_arg( 'iawmlf_filtered_post_id', absint( $params['iawmlf_filtered_post_id'] ), $redirect );
 		}
 
-		// Add to the redirect the current page.
-		$url = home_url() . $redirect;
-
-		// Redirect to the page using JS as page already loaded headers.
-		printf( '<script>window.location = %s;</script>', wp_json_encode( $url ) );
-		exit;
+		return $redirect;
 	}
 
 	/**
@@ -340,7 +350,7 @@ class Report_Table extends \WP_List_Table {
 				$this->notices[] = array(
 					'message' => sprintf(
 						// translators: %d is the link id.
-						__( 'Link not found with id:%d', 'internet-archive-wayback-machine-link-fixer' ),
+						__( 'Link not found with id: %d', 'internet-archive-wayback-machine-link-fixer' ),
 						absint( $link_id )
 					),
 					'type'    => 'error',
@@ -409,7 +419,7 @@ class Report_Table extends \WP_List_Table {
 				$this->notices[] = array(
 					'message' => sprintf(
 						// translators: %d is the link id.
-						__( 'Link not found with id:%d', 'internet-archive-wayback-machine-link-fixer' ),
+						__( 'Link not found with id: %d', 'internet-archive-wayback-machine-link-fixer' ),
 						absint( $link_id )
 					),
 					'type'    => 'error',
@@ -492,7 +502,7 @@ class Report_Table extends \WP_List_Table {
 				$this->notices[] = array(
 					'message' => sprintf(
 						// translators: %d is the link id.
-						__( 'Link not found with id:%d', 'internet-archive-wayback-machine-link-fixer' ),
+						__( 'Link not found with id: %d', 'internet-archive-wayback-machine-link-fixer' ),
 						absint( $link_id )
 					),
 					'type'    => 'error',
@@ -577,8 +587,8 @@ class Report_Table extends \WP_List_Table {
 		// If we have any where the link could not be found, add a notice.
 		if ( ! empty( $link_not_found ) ) {
 			$notice .= sprintf(
-				// translators: %s is the icon for error, %d is the number of links that could not be found.
-				__( '%1$s - %2$d links could not be found.', 'internet-archive-wayback-machine-link-fixer' ),
+				// translators: %1$s is the icon for error, %2$d is the number of links that could not be found.
+				_n( '%1$s - %2$d link could not be found.', '%1$s - %2$d links could not be found.', count( $link_not_found ), 'internet-archive-wayback-machine-link-fixer' ),
 				$error_icon,
 				count( $link_not_found )
 			);
@@ -586,9 +596,9 @@ class Report_Table extends \WP_List_Table {
 
 		// If we have any where the link is an archived link, add a notice.
 		if ( ! empty( $archived_links ) ) {
-			$notice .= sprintf(
-				// translators: %s is the icon for error, %d is the number of links that are archived.
-				__( '%1$s - %2$d links that are already snapshots and will be skipped', 'internet-archive-wayback-machine-link-fixer' ),
+			$notice .= ( '' !== $notice ? '<br />' : '' ) . sprintf(
+				// translators: %1$s is the icon for error, %2$d is the number of links that are archived.
+				_n( '%1$s - %2$d link that is already a snapshot and will be skipped', '%1$s - %2$d links that are already snapshots and will be skipped', count( $archived_links ), 'internet-archive-wayback-machine-link-fixer' ),
 				$error_icon,
 				count( $archived_links )
 			);
@@ -606,9 +616,9 @@ class Report_Table extends \WP_List_Table {
 
 		// If we have any where the link is an own link, add a notice.
 		if ( ! empty( $own_links ) ) {
-			$notice .= sprintf(
-				// translators: %s is the icon for error, , %d is the number of links that are own links.
-				__( '%1$s - %2$d links are from this site and will not be processed. Please enable the Auto Archiver to archive your own content.', 'internet-archive-wayback-machine-link-fixer' ),
+			$notice .= ( '' !== $notice ? '<br />' : '' ) . sprintf(
+				// translators: %1$s is the icon for error, %2$d is the number of links that are own links.
+				_n( '%1$s - %2$d link is from this site and will not be processed. Please enable the Auto Archiver to archive your own content.', '%1$s - %2$d links are from this site and will not be processed. Please enable the Auto Archiver to archive your own content.', count( $own_links ), 'internet-archive-wayback-machine-link-fixer' ),
 				$error_icon,
 				count( $own_links )
 			);
@@ -624,9 +634,17 @@ class Report_Table extends \WP_List_Table {
 			$notice .= '</ul>';
 		}
 
-		$success_notice = __( '✅ - The following links were added to the queue for a new snapshot to be created:', 'internet-archive-wayback-machine-link-fixer' );
-		// If we have any where the link was added to the queue, add a notice.
+		// Add the notices.
+		if ( '' !== $notice ) {
+			$this->notices[] = array(
+				'message' => $notice,
+				'type'    => 'error',
+			);
+		}
+
+		// Only add the success notice if links were actually queued.
 		if ( ! empty( $added_links ) ) {
+			$success_notice = __( '✅ - The following links were added to the queue for a new snapshot to be created:', 'internet-archive-wayback-machine-link-fixer' );
 
 			// List the urls.
 			$success_notice .= '<ul>';
@@ -637,21 +655,13 @@ class Report_Table extends \WP_List_Table {
 				);
 			}
 			$success_notice .= '</ul>';
-			$success_notice .= '<p>' . __( 'Snapshots are being queued for processing and will appear soon. Thanks for your patience!', 'internet-archive-wayback-machine-link-fixer' ) . '</p>';
-		}
+			$success_notice .= '<br />' . __( 'Snapshots are being queued for processing and will appear soon. Thanks for your patience!', 'internet-archive-wayback-machine-link-fixer' );
 
-		// Add the notices.
-		if ( '' !== $notice ) {
 			$this->notices[] = array(
-				'message' => $notice,
-				'type'    => 'error',
+				'message' => $success_notice,
+				'type'    => 'success',
 			);
 		}
-		// Add the success notice.
-		$this->notices[] = array(
-			'message' => $success_notice,
-			'type'    => 'success',
-		);
 	}
 
 
@@ -674,7 +684,7 @@ class Report_Table extends \WP_List_Table {
 				$this->notices[] = array(
 					'message' => sprintf(
 						// translators: %d is the link id.
-						__( 'Link not found with id:%d', 'internet-archive-wayback-machine-link-fixer' ),
+						__( 'Link not found with id: %d', 'internet-archive-wayback-machine-link-fixer' ),
 						absint( $link_id )
 					),
 					'type'    => 'error',
@@ -1114,7 +1124,7 @@ class Report_Table extends \WP_List_Table {
 				if ( $item->has_archived_href() ) {
 					return sprintf(
 						'<a href="%s" target="_blank">%s</a>',
-						$item->get_archived_href(),
+						esc_url( $item->get_archived_href() ),
 						$this->get_dashicon( 'dashicons-yes-alt', __( 'Has a valid archive snapshot', 'internet-archive-wayback-machine-link-fixer' ) )
 					);
 				}
@@ -1217,7 +1227,15 @@ class Report_Table extends \WP_List_Table {
 		}
 
 		$last_status_display = $last_check_status
-			? "<a href=\"https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/{$last_check_status}\" target=\"_blank\">{$last_check_status}  status</a>"
+			? sprintf(
+				'<a href="%1$s" target="_blank">%2$s</a>',
+				esc_url( "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/{$last_check_status}" ),
+				sprintf(
+					// translators: %s: HTTP status code (e.g. 404).
+					__( '%s status', 'internet-archive-wayback-machine-link-fixer' ),
+					$last_check_status
+				)
+			)
 			: __( 'No HTTP Code', 'internet-archive-wayback-machine-link-fixer' );
 
 		return sprintf(
