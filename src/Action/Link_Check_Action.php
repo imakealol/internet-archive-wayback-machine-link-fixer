@@ -115,11 +115,11 @@ class Link_Check_Action {
 		$link->add_check( $status, gmdate( 'Y-m-d H:i:s' ) );
 
 		// Validate the link.
-		$valid = $link->is_valid();
+		$valid = $link->assess_validity();
 
 		// If the link is set to be excluded, set as valid.
 		if ( $link->is_excluded() ) {
-			$link->set_valid( true );
+			$link->set_valid();
 			$valid = true;
 		}
 

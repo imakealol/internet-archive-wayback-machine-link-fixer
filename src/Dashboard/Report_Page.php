@@ -439,13 +439,17 @@ class Report_Page {
 		}
 
 		// Allow 3rd parties to hook in and modify the link before saving.
-		$link = apply_filters( 'iawmlf_before_saving_link_details', $link );
+		// A malformed callback (not returning the link) degrades to the unfiltered link.
+		$filtered = apply_filters( 'iawmlf_before_saving_link_details', $link );
+		$link     = $filtered instanceof Link ? $filtered : $link;
 
 		// Save the link.
 		$this->link_repository->upsert( $link );
 
 		// Allow 3rd parties to hook in and modify the redirect param after saving, for showing custom notices.
-		$has_updated = (bool) apply_filters( 'iawmlf_link_details_updated_redirect_param', '1', $link );
+		// Recognised boolean keywords ('false', 'no', '0') read as false; anything else keeps the documented (bool) cast.
+		$raw_updated = apply_filters( 'iawmlf_link_details_updated_redirect_param', '1', $link );
+		$has_updated = filter_var( $raw_updated, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE ) ?? (bool) $raw_updated;
 
 		// Redirect back to the link details page, with a success notice if updated.
 		$redirect_args = array(

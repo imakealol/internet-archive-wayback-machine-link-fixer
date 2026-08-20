@@ -29,13 +29,16 @@ class Dashboard_Statistics {
 	 *
 	 * @return array{
 	 *     total_links: int<0, max>,
-	 *     broken_links: int<0, max>,
+	 *     all_broken_links: int<0, max>,
+	 *     broken_and_redirected_links: int<0, max>,
+	 *     broken_not_redirected_links: int<0, max>,
 	 *     links_with_archive: int<0, max>,
 	 *     links_without_archive: int<0, max>,
 	 *     not_checked: int<0, max>,
 	 *     process_done: int<0, max>,
 	 *     process_new: int<0, max>,
 	 *     process_pending: int<0, max>,
+	 *     last_checks: array,
 	 * }
 	 */
 	public static function get_link_statistics(): array {
@@ -44,13 +47,12 @@ class Dashboard_Statistics {
 
 		// If we dont have an array or invalid data, compile fresh.
 		if ( false === $from_cache || ! is_array( $from_cache ) ) {
-			$stats = self::compile_link_statistics();
+			$stats = self::normalize_link_statistics( self::compile_link_statistics() );
 		} else {
 			// Validate and normalize cached data.
 			$stats = self::normalize_link_statistics( $from_cache );
 			if ( null === $stats ) {
-				$stats = self::compile_link_statistics();
-				$stats = self::normalize_link_statistics( $stats );
+				$stats = self::normalize_link_statistics( self::compile_link_statistics() );
 			} else {
 				return $stats;
 			}
@@ -93,7 +95,6 @@ class Dashboard_Statistics {
 		// Only return the required keys.
 		$stats = array(
 			'total_links'                 => \absint( $stats['total_links'] ),
-			'broken_links'                => \absint( $stats['all_broken_links'] ),
 			'all_broken_links'            => \absint( $stats['all_broken_links'] ),
 			'links_with_archive'          => \absint( $stats['links_with_archive'] ),
 			'links_without_archive'       => \absint( $stats['links_without_archive'] ),
@@ -114,13 +115,16 @@ class Dashboard_Statistics {
 	 *
 	 * @return array{
 	 *     total_links: int<0, max>,
-	 *     broken_links: int<0, max>,
+	 *     all_broken_links: int<0, max>,
+	 *     broken_and_redirected_links: int<0, max>,
+	 *     broken_not_redirected_links: int<0, max>,
 	 *     links_with_archive: int<0, max>,
 	 *     links_without_archive: int<0, max>,
 	 *     not_checked: int<0, max>,
 	 *     process_done: int<0, max>,
 	 *     process_new: int<0, max>,
 	 *     process_pending: int<0, max>,
+	 *     last_checks: array,
 	 * }
 	 */
 	private static function compile_link_statistics(): array {
@@ -128,14 +132,14 @@ class Dashboard_Statistics {
 
 		// Get all the link stats.
 		$all_links          = $links->count_links( \PHP_INT_MAX, 1 );
-		$all_broken         = $links->count_links( \PHP_INT_MAX, 1, array( Link_Repository::LINK_STATUS_BROKEN ), array(), array(), 'fallback', null, null, false );
+		$all_broken         = $links->count_links( \PHP_INT_MAX, 1, array( Link_Repository::LINK_STATUS_BROKEN ), array(), array(), Link_Repository::ORDER_ID_DESC, null, null, false );
 		$has_archive_link   = $links->count_links( \PHP_INT_MAX, 1, array(), array(), array( Link_Repository::LINK_HAS_ARCHIVE ) );
-		$redirected_broken_ = $links->count_links( \PHP_INT_MAX, 1, array( Link_Repository::LINK_STATUS_BROKEN ), array(), array( Link_Repository::LINK_HAS_ARCHIVE ), 'fallback', null, null, false );
-		$not_checked        = $links->count_links( \PHP_INT_MAX, 1, array(), array(), array(), 'fallback', null, null, null, null, false );
-		$process_new        = $links->count_links( \PHP_INT_MAX, 1, array(), array(), array(), 'fallback', null, null, null, array( Link::PROCESS_NEW ) );
-		$process_done_      = $links->count_links( \PHP_INT_MAX, 1, array(), array(), array(), 'fallback', null, null, null, array( Link::PROCESS_DONE ) );
-		$process_pending    = $links->count_links( \PHP_INT_MAX, 1, array(), array(), array(), 'fallback', null, null, null, array( Link::PROCESS_PENDING ) );
-		$last_checks        = $links->query_links( 10, 1, array(), array(), array(), Link_Repository::ORDER_DATE_DESC, null, null, null, null, null, true );
+		$redirected_broken_ = $links->count_links( \PHP_INT_MAX, 1, array( Link_Repository::LINK_STATUS_BROKEN ), array(), array( Link_Repository::LINK_HAS_ARCHIVE ), Link_Repository::ORDER_ID_DESC, null, null, false );
+		$not_checked        = $links->count_links( \PHP_INT_MAX, 1, array(), array(), array(), Link_Repository::ORDER_ID_DESC, null, null, null, null, false );
+		$process_new        = $links->count_links( \PHP_INT_MAX, 1, array(), array(), array(), Link_Repository::ORDER_ID_DESC, null, null, null, array( Link::PROCESS_NEW ) );
+		$process_done_      = $links->count_links( \PHP_INT_MAX, 1, array(), array(), array(), Link_Repository::ORDER_ID_DESC, null, null, null, array( Link::PROCESS_DONE ) );
+		$process_pending    = $links->count_links( \PHP_INT_MAX, 1, array(), array(), array(), Link_Repository::ORDER_ID_DESC, null, null, null, array( Link::PROCESS_PENDING ) );
+		$last_checks        = $links->query_links( 10, 1, array(), array(), array(), Link_Repository::ORDER_DATE_DESC, null, null, null, null, null );
 
 		// Extract the details from last checks.
 		$last_checks = array_map(
