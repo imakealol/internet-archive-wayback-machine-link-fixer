@@ -51,6 +51,21 @@ class Settings_Page {
 		add_action( 'admin_menu', array( $this, 'register_page' ), 20, 0 );
 		add_action( 'admin_init', array( $this, 'validate_archive_org_keys' ), 1 );
 		add_action( 'wp_ajax_iawmlf_dismiss_donation_cta', array( $this, 'dismiss_donation_cta' ) );
+
+		// Saving either archive.org key invalidates the cached account details.
+		add_action( 'add_option_' . Settings::ARCHIVE_ORG_ACCESS_KEY, array( $this, 'clear_account_details_cache' ) );
+		add_action( 'update_option_' . Settings::ARCHIVE_ORG_ACCESS_KEY, array( $this, 'clear_account_details_cache' ) );
+		add_action( 'add_option_' . Settings::ARCHIVE_ORG_SECRET_KEY, array( $this, 'clear_account_details_cache' ) );
+		add_action( 'update_option_' . Settings::ARCHIVE_ORG_SECRET_KEY, array( $this, 'clear_account_details_cache' ) );
+	}
+
+	/**
+	 * Clears the cached account details when the archive.org keys change.
+	 *
+	 * @return void
+	 */
+	public function clear_account_details_cache(): void {
+		delete_transient( 'iawmlf_account_details' );
 	}
 
 	/**
@@ -73,6 +88,14 @@ class Settings_Page {
 	 * @return  void
 	 */
 	public function register_fields(): void {
+		global $pagenow;
+
+		// Only needed when rendering the settings screen, or saving it via options.php.
+		$current_page = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended, Read only page check.
+		if ( 'options.php' !== $pagenow && self::PAGE_SLUG !== $current_page ) {
+			return;
+		}
+
 		// Register the settings fields.
 		$this->register_settings_fields();
 		$this->add_settings_fields();
