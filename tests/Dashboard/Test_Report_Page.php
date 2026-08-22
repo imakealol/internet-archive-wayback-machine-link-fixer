@@ -148,6 +148,65 @@ class Test_Report_Page extends \WP_UnitTestCase {
 	}
 
 	/**
+	 * @testdox A manual exclusion must carry the user marker even when the link already had a system message, so background events cannot lift it. (S053)
+	 *
+	 * @return void
+	 */
+	public function test_manual_exclusion_with_existing_message_is_marked_as_manual(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		// A link with a leftover system message, not yet excluded.
+		$link = new Link( 'https://example.com/s053-existing-message' );
+		$link->set_message( 'Redirected. SomeSystemError' );
+		$link = $this->link_repository->upsert( $link );
+
+		$_POST['iawmlf_exclude_link'] = '1';
+		$this->submit_link_details_form( $link->get_id() );
+		unset( $_POST['iawmlf_exclude_link'] );
+
+		$saved = $this->link_repository->find_by_id( $link->get_id() );
+
+		$this->assertTrue( $saved->is_excluded() );
+		$this->assertTrue( $saved->is_manual_exclusion(), 'The exclusion must be recognised as manual despite the pre-existing message.' );
+	}
+
+	/**
+	 * @testdox Saving the details form of a pattern-excluded link must not flip its database exclusion flag. (S054)
+	 *
+	 * @return void
+	 */
+	public function test_saving_pattern_excluded_link_does_not_set_db_flag(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		$link = $this->link_repository->upsert( new Link( 'https://pattern-excluded.example.com/s054' ) );
+
+		// The template renders a hidden iawmlf_exclude_link carrying the DB flag - empty when not excluded.
+		$_POST['iawmlf_exclude_link'] = '';
+		$this->submit_link_details_form( $link->get_id() );
+		unset( $_POST['iawmlf_exclude_link'] );
+
+		$saved = $this->link_repository->find_by_id( $link->get_id() );
+
+		$this->assertFalse( $saved->is_excluded(), 'Saving the form must not flip the exclusion flag on.' );
+	}
+
+	/**
+	 * @testdox Bulk action processing must be hooked to load-{hook}, before any output. (S056)
+	 *
+	 * @return void
+	 */
+	public function test_bulk_actions_are_processed_on_load_hook(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		$page = new Report_Page();
+		$page->register_page();
+
+		$hook = get_plugin_page_hookname( 'iawmlf-links', \Internet_Archive\Wayback_Machine_Link_Fixer\Dashboard\Dashboard_Page::DASHBOARD_SLUG );
+
+		$this->assertNotFalse( has_action( "load-$hook", array( $page, 'handle_bulk_actions' ) ) );
+	}
+
+	/**
 	 * @testdox The default filter value should include the updated flag.
 	 *
 	 * @return void

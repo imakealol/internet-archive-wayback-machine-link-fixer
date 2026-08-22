@@ -357,6 +357,9 @@ function iawmlf_is_archive_link( string $url ): bool {
 		'http://web-wp.archive.org/web/',
 	);
 
+	// The compared region is scheme + host, which are case-insensitive.
+	$url = strtolower( $url );
+
 	foreach ( $urls as $archive_url ) {
 		if ( 0 === strpos( $url, $archive_url ) ) {
 			return true;
@@ -380,11 +383,11 @@ function iawmlf_is_current_site_link( string $url ): bool {
 		get_site_url( null, '', 'https' ),
 		get_site_url( null, '', 'http' ),
 	);
-	// Normalize the URL.
-	$normalized_url = iawmlf_normalize_url( $url );
+	// Normalize the URL, lowercased - the compared region is scheme + host.
+	$normalized_url = strtolower( iawmlf_normalize_url( $url ) );
 
 	// Noprmalize the site URLs.
-	$site_urls = array_map( 'iawmlf_normalize_url', $site_urls );
+	$site_urls = array_map( fn( string $site_url ): string => strtolower( iawmlf_normalize_url( $site_url ) ), $site_urls );
 
 	// Check if the URL starts with any of the site URLs, with a boundary so lookalike domains don't match.
 	foreach ( $site_urls as $site_url ) {
@@ -417,6 +420,18 @@ function iawmlf_normalize_url( string $url ): string {
 
 	// URL Encode the url parameters.
 	$url_parts = wp_parse_url( $url );
+
+	// Punycode an international host. WordPress bundles the encoder, so intl is not required.
+	if ( isset( $url_parts['host'] )
+		&& 1 === preg_match( '/[^\x20-\x7e]/', $url_parts['host'] )
+		&& class_exists( '\WpOrg\Requests\IdnaEncoder' )
+	) {
+		try {
+			$url_parts['host'] = \WpOrg\Requests\IdnaEncoder::encode( $url_parts['host'] );
+		} catch ( \Throwable $e ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
+			// Leave the host as written; the URL just fails validation downstream.
+		}
+	}
 
 	// If we have a path, encode it.
 	if ( isset( $url_parts['path'] ) ) {

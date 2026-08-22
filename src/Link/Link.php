@@ -11,6 +11,8 @@ declare(strict_types=1);
 namespace Internet_Archive\Wayback_Machine_Link_Fixer\Link;
 
 use DateTime;
+use DateTimeZone;
+use DateTimeImmutable;
 use Internet_Archive\Wayback_Machine_Link_Fixer\Settings\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -282,18 +284,10 @@ class Link implements \JsonSerializable {
 	 * @return string
 	 */
 	public function get_archived_href(): ?string {
-		$archived_href = $this->archived_href;
+		$archived_href = $this->get_stored_archived_href();
 
 		if ( null === $archived_href || '' === $archived_href ) {
 			return $archived_href;
-		}
-
-		// If the url starts http(s)://web.archive.org/web/, replace it with http(s)://web-wp.archive.org/web/
-		if ( 0 === strpos( $archived_href, 'https://web.archive.org/web/' ) ) {
-			$archived_href = str_replace( 'https://web.archive.org/web/', 'https://web-wp.archive.org/web/', $archived_href );
-		}
-		if ( 0 === strpos( $archived_href, 'http://web.archive.org/web/' ) ) {
-			$archived_href = str_replace( 'http://web.archive.org/web/', 'http://web-wp.archive.org/web/', $archived_href );
 		}
 
 		// If the setting to cast to https is enabled, cast the start of the url to https.
@@ -303,6 +297,28 @@ class Link implements \JsonSerializable {
 		}
 
 		return $archived_href;
+	}
+
+	/**
+	 * Get the archived href as it should be stored.
+	 *
+	 * The host rewrite is canonical and persisted, but the https cast is a display
+	 * setting and must never be written to the database - it would outlive the setting.
+	 *
+	 * @return string|null
+	 */
+	public function get_stored_archived_href(): ?string {
+		$archived_href = $this->archived_href;
+
+		if ( null === $archived_href || '' === $archived_href ) {
+			return $archived_href;
+		}
+
+		// If the url starts http(s)://web.archive.org/web/, replace it with http(s)://web-wp.archive.org/web/
+		// Lowercase literals, not a backreference - a captured 'S' would give an unusable 'httpS://' scheme.
+		$archived_href = preg_replace( '#^https://web\.archive\.org/web/#i', 'https://web-wp.archive.org/web/', $archived_href );
+
+		return preg_replace( '#^http://web\.archive\.org/web/#i', 'http://web-wp.archive.org/web/', $archived_href );
 	}
 
 
@@ -523,8 +539,35 @@ class Link implements \JsonSerializable {
 			'redirect_href' => $this->redirect_href,
 			'checks'        => array_slice( $this->checks, -3 ), // Newest 3 only, the full history is not needed client side.
 			'broken'        => $this->is_broken,
-			'last_checked'  => $this->get_last_check(),
+			'last_checked'  => self::serialize_check( $this->get_last_check() ),
 			'process'       => $this->archive_process,
 		);
+	}
+
+	/**
+	 * Format a check for the client, with the date as an unambiguous UTC timestamp.
+	 *
+	 * Check dates are stored as UTC in 'Y-m-d H:i:s', which browsers read as local time.
+	 * Only last_checked is consumed client side, so only it is converted.
+	 *
+	 * @param array|null $check The check to format.
+	 *
+	 * @return array|null
+	 */
+	private static function serialize_check( ?array $check ): ?array {
+		if ( null === $check || ! isset( $check['date'] ) ) {
+			return $check;
+		}
+
+		$date = DateTimeImmutable::createFromFormat( 'Y-m-d H:i:s', (string) $check['date'], new DateTimeZone( 'UTC' ) );
+
+		// A malformed date is passed through rather than fataling the payload.
+		if ( false === $date ) {
+			return $check;
+		}
+
+		$check['date'] = $date->format( DATE_ATOM );
+
+		return $check;
 	}
 }

@@ -126,7 +126,7 @@ Specify how often to recheck each link for validity. Avoid checking too often, a
 
 ![Failure Threshold](./_docs/settings--failure-threshold.png)
 
-Specify the number of consecutive failed checks before a link is marked as broken. Occasional single failures are normal, so use a value high enough to confirm genuine link loss. The default is 5.
+Specify the number of consecutive failed checks before a link is marked as broken. Occasional single failures are normal, so use a value high enough to confirm genuine link loss. The default is 3.
 
 
 #### Fixer Option
@@ -663,11 +663,11 @@ add_filter( 'iawmlf_routinely_update_wayback_machine', function( bool $routinely
 
 #### `iawmlf_routinely_update_wayback_machine_interval`
 
-This filter overrides the admin setting that controls how long between each routine update. The default is 14 days. The time is given in seconds.
+This filter overrides the admin setting that controls how long between each routine update. The value is given in days, with a minimum of 1 day. The default is 28 days — any value below 1 falls back to the default.
 
 ```php
 add_filter( 'iawmlf_routinely_update_wayback_machine_interval', function( int $interval ): int {
-	return 7 * \DAY_IN_SECONDS; // 7 days
+	return 7; // 7 days
 });
 ```
 
@@ -731,6 +731,17 @@ add_filter( 'iawmlf_is_production_environment', function( bool $is_production ):
 #### Configuration Filters
 
 These filters control various aspects of plugin behavior and performance.
+
+#### `iawmlf_scan_content`
+
+This filter controls the content a post is scanned for links. By default the post content has its blocks and shortcodes rendered, so links they output are found. The rest of the `the_content` chain is deliberately not applied, as it would pull in links belonging to other plugins (embeds, related posts, ad injectors).
+
+```php
+add_filter( 'iawmlf_scan_content', function( string $rendered, string $raw, int $post_id ): string {
+	// Scan the fully filtered content instead.
+	return apply_filters( 'the_content', $raw );
+}, 10, 3 );
+```
 
 #### `iawmlf_link_checker_timeout`
 

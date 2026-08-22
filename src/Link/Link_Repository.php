@@ -155,7 +155,7 @@ class Link_Repository {
 	private function insert( Link $link ): Link {
 		// Extract the values.
 		$href            = $link->get_href();
-		$archived_href   = $link->get_archived_href();
+		$archived_href   = $link->get_stored_archived_href();
 		$checks          = $link->get_checks();
 		$redirect_href   = $link->get_redirect_href();
 		$is_broken       = $link->is_broken();
@@ -216,7 +216,7 @@ class Link_Repository {
 		// Extract the values.
 		$id              = $link->get_id();
 		$href            = $link->get_href();
-		$archived_href   = $link->get_archived_href();
+		$archived_href   = $link->get_stored_archived_href();
 		$checks          = $link->get_checks();
 		$redirect_href   = $link->get_redirect_href();
 		$is_broken       = $link->is_broken();
@@ -627,18 +627,15 @@ class Link_Repository {
 	 * @return array
 	 */
 	private function get_date_range( string $date ): array {
-		// Create DateTime object from 'yyyy-mm' date.
-		$date = new DateTime( $date );
+		// The month boundaries in the site timezone, converted to UTC to match the stored check dates.
+		$start = new DateTime( $date . '-01 00:00:00', wp_timezone() );
+		$end   = ( clone $start )->modify( 'last day of this month' )->setTime( 23, 59, 59 );
 
-		// Get the start of the month.
-		$start = $date->format( 'Y-m-01' );
-
-		// Get the end of the month.
-		$end = $date->format( 'Y-m-t' );
+		$utc = new \DateTimeZone( 'UTC' );
 
 		return array(
-			'start' => esc_attr( $start ),
-			'end'   => esc_attr( $end ),
+			'start' => $start->setTimezone( $utc )->format( 'Y-m-d H:i:s' ),
+			'end'   => $end->setTimezone( $utc )->format( 'Y-m-d H:i:s' ),
 		);
 	}
 

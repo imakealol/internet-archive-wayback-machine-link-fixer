@@ -43,6 +43,13 @@ class Report_Page {
 	private $hook;
 
 	/**
+	 * The list table, created on load-{hook} so bulk-action notices survive into the render.
+	 *
+	 * @var Report_Table|null
+	 */
+	private $table;
+
+	/**
 	 * Creates a new instance of the report page.
 	 */
 	public function __construct() {
@@ -74,7 +81,7 @@ class Report_Page {
 		add_filter(
 			'set-screen-option',
 			function ( $status, $option, $value ) {
-				return ( 'links_per_page' === $option ) ? (int) $value : $status;
+				return ( 'links_per_page' === $option ) ? max( 1, (int) $value ) : $status;
 			},
 			10,
 			3
@@ -102,6 +109,9 @@ class Report_Page {
 
 		// Handle the link details form submission.
 		add_action( "load-$hook", array( $this, 'handle_link_details_form' ) );
+
+		// Process bulk actions before any output, so a real redirect can be issued.
+		add_action( "load-$hook", array( $this, 'handle_bulk_actions' ) );
 
 		// Add the screen options.
 		add_action( "load-$hook", array( $this, 'register_screen_options' ) );
@@ -269,6 +279,21 @@ class Report_Page {
 	}
 
 	/**
+	 * Process the list table bulk actions on load-{hook}, before any output.
+	 *
+	 * @return void
+	 */
+	public function handle_bulk_actions(): void {
+		// The single link view has no bulk actions, and load-{hook} fires for it too.
+		if ( isset( $_GET['iawmlf_link_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended, Can be linked, so no nonce possible.
+			return;
+		}
+
+		$this->table = new Report_Table( new Link_Repository() );
+		$this->table->process_bulk_action();
+	}
+
+	/**
 	 * Render the report list page.
 	 *
 	 * @since 1.2.0
@@ -276,11 +301,8 @@ class Report_Page {
 	 * @return void
 	 */
 	private function render_list_page(): void {
-		// Render the list table.
-		$table = new Report_Table( new Link_Repository() );
-
-		// Run the bulk actions.
-		$table->process_bulk_action();
+		// Render the list table, reusing the load-{hook} instance so its notices render.
+		$table = $this->table ?? new Report_Table( new Link_Repository() );
 
 		// Render any notices.
 		$table->render_notices();
@@ -412,14 +434,14 @@ class Report_Page {
 			return;
 		}
 
-		// Determine the exclusion state from the checkbox.
-		$exclude = isset( $_POST['iawmlf_exclude_link'] );
+		// Determine the exclusion state from the checkbox value - the pattern-excluded
+		// form submits a hidden copy carrying the DB flag, so presence alone means nothing.
+		$exclude = ! empty( $_POST['iawmlf_exclude_link'] );
 
 		if ( $exclude ) {
-			$link->set_excluded( true );
-
-			// Set message if not already set.
-			if ( '' === $link->get_message() ) {
+			// On the transition into excluded, always write the marker - it is how
+			// background events tell a manual exclusion from a system one.
+			if ( ! $link->is_excluded() ) {
 				$user = wp_get_current_user();
 				$link->set_message(
 					sprintf(
@@ -429,6 +451,8 @@ class Report_Page {
 					)
 				);
 			}
+
+			$link->set_excluded( true );
 		} else {
 			$link->set_excluded( false );
 

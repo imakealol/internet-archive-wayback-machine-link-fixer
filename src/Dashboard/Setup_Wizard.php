@@ -120,6 +120,11 @@ class Setup_Wizard {
 			return;
 		}
 
+		// Never abort an in-flight form submission - the redirect catches the next page view.
+		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'POST' === strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) ) {
+			return;
+		}
+
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
@@ -284,8 +289,8 @@ class Setup_Wizard {
 		$index    = array_keys( $steps );
 		$previous = array_search( $current_step, $index, true ) - 1;
 
-		// Update the step.
-		$previous_step = $index[ $previous ];
+		// An unrecognised step falls back to step-1.
+		$previous_step = $index[ $previous ] ?? 'step-1';
 		Settings::update_setup_wizard_step( $previous_step );
 	}
 

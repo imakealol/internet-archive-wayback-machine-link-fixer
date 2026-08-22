@@ -92,6 +92,49 @@ class Test_Link_Repository extends \WP_UnitTestCase {
 	}
 
 	/**
+	 * @testdox The display-time https cast must never be written to the database. (T068)
+	 *
+	 * @return void
+	 */
+	public function test_https_cast_is_not_persisted(): void {
+		update_option( Settings::CAST_ARCHIVED_TO_HTTPS, true );
+
+		$link = new Link( 'https://t068-https-cast.example.com' );
+		$link->set_archived_href( 'http://web.archive.org/web/20240101000000/https://t068-https-cast.example.com' );
+		$link = $this->link_repository->upsert( $link );
+
+		// Save again - the update path must not bake the cast in either.
+		$link->add_check( 200 );
+		$this->link_repository->upsert( $link );
+
+		$wpdb   = $GLOBALS['wpdb'];
+		$stored = $wpdb->get_var(
+			$wpdb->prepare( 'SELECT archived FROM ' . Settings::get_link_table_name() . ' WHERE id = %d', $link->get_id() )
+		);
+
+		$this->assertSame(
+			'http://web-wp.archive.org/web/20240101000000/https://t068-https-cast.example.com',
+			$stored,
+			'The stored value keeps the web-wp host rewrite but must stay http - the cast is display only.'
+		);
+
+		// Display still honours the setting.
+		$this->assertSame(
+			'https://web-wp.archive.org/web/20240101000000/https://t068-https-cast.example.com',
+			$this->link_repository->find_by_id( $link->get_id() )->get_archived_href()
+		);
+
+		// With the setting off, the same stored row displays as http again.
+		update_option( Settings::CAST_ARCHIVED_TO_HTTPS, false );
+		$this->assertSame(
+			'http://web-wp.archive.org/web/20240101000000/https://t068-https-cast.example.com',
+			$this->link_repository->find_by_id( $link->get_id() )->get_archived_href()
+		);
+
+		delete_option( Settings::CAST_ARCHIVED_TO_HTTPS );
+	}
+
+	/**
 	 * @testdox It should be possible to find a link by its URL.
 	 *
 	 * @return void
@@ -510,6 +553,39 @@ class Test_Link_Repository extends \WP_UnitTestCase {
 		foreach ( $queried_links as $index => $link ) {
 			$this->assertContains( $link->get_href(), $expected );
 		}
+	}
+
+	/**
+	 * @testdox The month date filter must use the site timezone and include the whole last day of the month. (T072)
+	 *
+	 * @return void
+	 */
+	public function test_date_filter_uses_site_timezone(): void {
+		update_option( 'timezone_string', 'Asia/Karachi' ); // UTC+5.
+
+		// 20:00 UTC on 31st Dec is 01:00 on 1st Jan site time - inside January.
+		$early = new Link( 'https://t072-early-boundary.example.com' );
+		$early->add_check( 200, '2021-12-31 20:00:00' );
+		$this->link_repository->upsert( $early );
+
+		// 12:00 UTC on 31st Jan is 17:00 on 31st Jan site time - inside January.
+		$late = new Link( 'https://t072-late-boundary.example.com' );
+		$late->add_check( 200, '2022-01-31 12:00:00' );
+		$this->link_repository->upsert( $late );
+
+		$queried_links = $this->link_repository->query_links( 10, 1, array(), array(), array(), Link_Repository::ORDER_DATE_DESC, null, '2022-01' );
+
+		$hrefs = array_map(
+			function ( Link $link ): string {
+				return $link->get_href();
+			},
+			$queried_links
+		);
+
+		$this->assertContains( 'https://t072-early-boundary.example.com', $hrefs );
+		$this->assertContains( 'https://t072-late-boundary.example.com', $hrefs );
+
+		update_option( 'timezone_string', '' );
 	}
 
 	/**

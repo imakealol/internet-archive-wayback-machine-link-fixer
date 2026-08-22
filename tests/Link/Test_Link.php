@@ -507,6 +507,17 @@ class Test_Link extends \WP_UnitTestCase {
 		$link = new Link( 'http://example.com' );
 		$link->set_archived_href( 'http://web.archive.org/web/20240101000000/https://example.com' );
 		$this->assertSame( 'http://web-wp.archive.org/web/20240101000000/https://example.com', $link->get_archived_href() );
+
+		// A capitalised host is still reparsed.
+		$link = new Link( 'https://example.com' );
+		$link->set_archived_href( 'https://Web.Archive.org/web/20240101000000/https://example.com' );
+		$this->assertSame( 'https://web-wp.archive.org/web/20240101000000/https://example.com', $link->get_archived_href() );
+
+		// A capitalised scheme must come back lowercase, not as a mixed 'httpS'.
+		$link = new Link( 'https://example.com' );
+		$link->set_archived_href( 'HTTPS://Web.Archive.org/web/20240101000000/https://example.com' );
+		$this->assertSame( 'https://web-wp.archive.org/web/20240101000000/https://example.com', $link->get_archived_href() );
+		$this->assertSame( 'https://web-wp.archive.org/web/20240101000000/https://example.com', $link->get_stored_archived_href() );
 	}
 
 	/**
@@ -556,5 +567,74 @@ class Test_Link extends \WP_UnitTestCase {
 		$this->assertCount( 3, $json['checks'] );
 		$this->assertSame( '2024-01-03 00:00:00', $json['checks'][0]['date'] );
 		$this->assertSame( '2024-01-05 00:00:00', $json['checks'][2]['date'] );
+	}
+
+	/**
+	 * @testdox The last checked date sent to the browser must be an unambiguous UTC timestamp. (S157)
+	 *
+	 * @dataProvider provide_site_timezones
+	 *
+	 * @param string $timezone The site timezone to run under.
+	 *
+	 * @return void
+	 */
+	public function test_last_checked_is_serialized_as_utc( string $timezone ): void {
+		update_option( 'timezone_string', $timezone );
+
+		$link = new Link( 'https://s157-utc.example.com' );
+		$link->add_check( 200, '2024-01-01 12:00:00' );
+
+		$json = $link->jsonSerialize();
+
+		// A bare 'Y-m-d H:i:s' is read as local time by browsers; the stored value is UTC.
+		$this->assertSame(
+			'2024-01-01T12:00:00+00:00',
+			$json['last_checked']['date'],
+			'The timestamp must be UTC regardless of the site timezone.'
+		);
+
+		// The http code is untouched.
+		$this->assertSame( 200, $json['last_checked']['http_code'] );
+
+		update_option( 'timezone_string', '' );
+	}
+
+	/**
+	 * Site timezones to serialize under.
+	 *
+	 * @return array<string, array{0: string}>
+	 */
+	public function provide_site_timezones(): array {
+		return array(
+			'utc'       => array( 'UTC' ),
+			'ahead'     => array( 'Asia/Karachi' ),
+			'behind'    => array( 'America/New_York' ),
+			'half hour' => array( 'Asia/Kolkata' ),
+		);
+	}
+
+	/**
+	 * @testdox A malformed check date must be passed through rather than fataling the payload. (S157)
+	 *
+	 * @return void
+	 */
+	public function test_malformed_last_checked_date_is_passed_through(): void {
+		$link = new Link( 'https://s157-malformed.example.com' );
+		$link->add_check( 200, 'not-a-date' );
+
+		$json = $link->jsonSerialize();
+
+		$this->assertSame( 'not-a-date', $json['last_checked']['date'] );
+	}
+
+	/**
+	 * @testdox A link with no checks must serialize a null last checked value. (S157)
+	 *
+	 * @return void
+	 */
+	public function test_last_checked_is_null_when_never_checked(): void {
+		$link = new Link( 'https://s157-never-checked.example.com' );
+
+		$this->assertNull( $link->jsonSerialize()['last_checked'] );
 	}
 }
