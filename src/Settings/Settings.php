@@ -44,6 +44,7 @@ class Settings {
 	public const SETUP_WIZARD_COMPLETED_KEY     = self::SETTINGS_PREFIX . 'setup_wizard_completed';
 	public const ONBOARDING_DATE_KEY            = self::SETTINGS_PREFIX . 'onboarding_date';
 	public const CAST_ARCHIVED_TO_HTTPS         = self::SETTINGS_PREFIX . 'cast_to_https';
+	public const INSTALLED_VERSION_KEY          = self::SETTINGS_PREFIX . 'installed_version';
 
 	// Table names.
 	public const LINK_TABLE = 'iawmlf_link_archive';
@@ -153,6 +154,32 @@ class Settings {
 	 */
 	public static function update_migrations( array $migrations ): void {
 		update_option( self::MIGRATIONS_KEY, $migrations, false );
+	}
+
+	/**
+	 * Get the plugin version the site was last loaded on.
+	 *
+	 * @since 1.4.4
+	 *
+	 * @return string
+	 */
+	public static function installed_version(): string {
+		return (string) get_option( self::INSTALLED_VERSION_KEY, '' );
+	}
+
+	/**
+	 * Store the plugin version the site is now running.
+	 *
+	 * Autoloaded, so the version check on a normal request costs no extra query.
+	 *
+	 * @since 1.4.4
+	 *
+	 * @param string $version The version to store.
+	 *
+	 * @return void
+	 */
+	public static function update_installed_version( string $version ): void {
+		update_option( self::INSTALLED_VERSION_KEY, $version, true );
 	}
 
 	/**
@@ -756,6 +783,7 @@ class Settings {
 		delete_option( self::PROCESS_LINKS );
 		delete_option( self::ALLOWED_POST_TYPES );
 		delete_option( self::MIGRATIONS_KEY );
+		delete_option( self::INSTALLED_VERSION_KEY );
 		delete_option( self::DROP_TABLES_ON_UNINSTALL_KEY );
 		delete_option( self::LINK_EXCLUSIONS );
 		delete_option( self::LINK_FIXER_EXCLUDED_POSTS );

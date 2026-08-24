@@ -32,7 +32,60 @@ class Test_Migrations extends \WP_UnitTestCase {
 
 		// Clear all migrations.
 		update_option( Settings::MIGRATIONS_KEY, array() );
+		delete_option( Settings::INSTALLED_VERSION_KEY );
 		Migrations::$migrations = array();
+	}
+
+	/**
+	 * @testdox A plugin update leaves the stored version behind, so any migration that has not run yet is run on load. (S007)
+	 *
+	 * @return void
+	 */
+	public function test_pending_migrations_run_when_stored_version_is_out_of_date(): void {
+		$migration_class = get_class( $this->createMock( Abstract_Migration::class ) );
+
+		Migrations::$migrations = array( $migration_class );
+
+		// The version the site was last loaded on.
+		update_option( Settings::INSTALLED_VERSION_KEY, '1.0.0' );
+
+		Migrations::maybe_run();
+
+		$this->assertContains( $migration_class, Settings::migrations() );
+		$this->assertSame( IAWMLF_VERSION, Settings::installed_version() );
+	}
+
+	/**
+	 * @testdox On an unchanged version nothing is run, so the check costs a single autoloaded option read. (S007)
+	 *
+	 * @return void
+	 */
+	public function test_migrations_are_not_run_when_stored_version_matches(): void {
+		$migration_class = get_class( $this->createMock( Abstract_Migration::class ) );
+
+		Migrations::$migrations = array( $migration_class );
+
+		Settings::update_installed_version( IAWMLF_VERSION );
+
+		Migrations::maybe_run();
+
+		$this->assertEmpty( Settings::migrations() );
+	}
+
+	/**
+	 * @testdox A fresh install has no stored version, so the migrations run and the version is stamped. (S007)
+	 *
+	 * @return void
+	 */
+	public function test_migrations_run_when_no_version_is_stored(): void {
+		$migration_class = get_class( $this->createMock( Abstract_Migration::class ) );
+
+		Migrations::$migrations = array( $migration_class );
+
+		Migrations::maybe_run();
+
+		$this->assertContains( $migration_class, Settings::migrations() );
+		$this->assertSame( IAWMLF_VERSION, Settings::installed_version() );
 	}
 
 	/**
@@ -149,6 +202,22 @@ class Test_Migrations extends \WP_UnitTestCase {
 	}
 
 	/**
+	 * @testdox Uninstalling removes the version stamp - it is autoloaded, so leaving it behind costs every request of a site without the plugin.
+	 *
+	 * @return void
+	 */
+	public function test_uninstall_clears_the_installed_version(): void {
+		update_option( Settings::DROP_TABLES_ON_UNINSTALL_KEY, true );
+
+		Settings::update_installed_version( IAWMLF_VERSION );
+		$this->assertSame( IAWMLF_VERSION, Settings::installed_version() );
+
+		iawmlf_uninstall();
+
+		$this->assertFalse( get_option( Settings::INSTALLED_VERSION_KEY ) );
+	}
+
+	/**
 	 * @testdox When the plugin is uninstalled, table should not be dropped if set to not drop.
 	 *
 	 * @return void
@@ -196,6 +265,23 @@ class Test_Migrations extends \WP_UnitTestCase {
 	}
 
 	/**
+	 * @testdox A migration that never ran is not torn down on uninstall - its down() would undo something it never built. (S106)
+	 *
+	 * @return void
+	 */
+	public function test_down_skips_migrations_that_never_ran(): void {
+		Spy_Migration::$torn_down = array();
+
+		Migrations::$migrations = array( Ran_Migration::class, Never_Ran_Migration::class );
+		Settings::update_migrations( array( Ran_Migration::class ) );
+
+		Migrations::down();
+
+		$this->assertSame( array( Ran_Migration::class ), Spy_Migration::$torn_down );
+		$this->assertEmpty( Settings::migrations() );
+	}
+
+	/**
 	 * @testdox Ensure the archive_process column was added with the 3rd migration.
 	 * This is formally the 3rd migration, but it is now merged into the 1st migration.
 	 *
@@ -218,4 +304,36 @@ class Test_Migrations extends \WP_UnitTestCase {
 		$this->assertEquals( 'varchar(36)', $details[0]->Type );
 	}
 
+}
+
+/**
+ * Records every teardown, so a test can see which migrations were actually run down.
+ */
+abstract class Spy_Migration extends Abstract_Migration {
+
+	/**
+	 * The classes torn down so far.
+	 *
+	 * @var string[]
+	 */
+	public static $torn_down = array();
+
+	public function up(): void {
+	}
+
+	public function down(): void {
+		self::$torn_down[] = static::class;
+	}
+}
+
+/**
+ * A migration recorded in the migration log.
+ */
+class Ran_Migration extends Spy_Migration {
+}
+
+/**
+ * A migration registered but never run.
+ */
+class Never_Ran_Migration extends Spy_Migration {
 }
